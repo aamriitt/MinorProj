@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CareWatch – Elderly Monitoring System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #07090f;
+      --bg2:        #0d1117;
+      --surface:    #111827;
+      --surface2:   #1a2235;
+      --border:     #1f2d42;
+      --border2:    #2a3a52;
+      --accent:     #38bdf8;
+      --accent-dim: rgba(56,189,248,.12);
+      --violet:     #a78bfa;
+      --violet-dim: rgba(167,139,250,.12);
+      --emerald:    #34d399;
+      --emerald-dim:rgba(52,211,153,.12);
+      --rose:       #fb7185;
+      --rose-dim:   rgba(251,113,133,.12);
+      --amber:      #fbbf24;
+      --amber-dim:  rgba(251,191,36,.12);
+      --text:       #e2e8f0;
+      --text2:      #94a3b8;
+      --text3:      #475569;
+      --mono:       'JetBrains Mono', monospace;
+      --sans:       'Space Grotesk', sans-serif;
+      --deva:       'Noto Sans Devanagari', sans-serif;
+      --r:          12px;
+      --r2:         16px;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); overflow-x: hidden; }
+
+    body::after {
+      content: '';
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image:
+        linear-gradient(rgba(56,189,248,.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(56,189,248,.018) 1px, transparent 1px);
+      background-size: 52px 52px;
+    }
+
+    /* ===== HEADER ===== */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 28px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(7,9,15,.92);
+      backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 200;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-mark {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--violet));
+      display: grid; place-items: center; font-size: 17px; flex-shrink: 0;
+    }
+    .logo-name { font-size: 1.15rem; font-weight: 700; letter-spacing: -.02em; }
+    .logo-name em { color: var(--accent); font-style: normal; }
+    .logo-sub { font-size: .6rem; color: var(--text3); letter-spacing: .1em; text-transform: uppercase; margin-top: 1px; }
+
+    .hdr-right { display: flex; gap: 8px; align-items: center; }
+    .pill {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 13px; border-radius: 999px;
+      background: var(--surface); border: 1px solid var(--border);
+      font-family: var(--mono); font-size: .68rem; color: var(--text2);
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); flex-shrink: 0; transition: background .3s; }
+    .dot.on   { background: var(--emerald); box-shadow: 0 0 7px var(--emerald); animation: blink 2.2s infinite; }
+    .dot.warn { background: var(--amber);   box-shadow: 0 0 7px var(--amber);   animation: blink .7s infinite; }
+    .dot.err  { background: var(--rose);    box-shadow: 0 0 7px var(--rose);    animation: blink .5s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ===== LAYOUT ===== */
+    .page {
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      gap: 18px;
+      padding: 20px 28px 28px;
+      position: relative; z-index: 1;
+    }
+    .left-col  { display: flex; flex-direction: column; gap: 16px; }
+    .right-col { display: flex; flex-direction: column; gap: 16px; }
+
+    /* ===== CARD ===== */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r2); overflow: hidden;
+    }
+    .card-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 18px; border-bottom: 1px solid var(--border);
+    }
+    .card-hdr-title {
+      font-size: .62rem; font-weight: 600; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--text3);
+    }
+
+    /* ===== VIDEO ===== */
+    .video-wrap { position: relative; background: #000; overflow: hidden; }
+    .video-wrap img { width: 100%; display: block; aspect-ratio: 16/9; object-fit: cover; }
+    .scan-line {
+      position: absolute; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent 0%, var(--accent) 50%, transparent 100%);
+      opacity: .35; animation: scan 4s linear infinite; top: 0;
+    }
+    @keyframes scan { from{top:0%} to{top:100%} }
+    .corners span { position: absolute; width: 18px; height: 18px; border-color: var(--accent); border-style: solid; opacity: .55; }
+    .corners .tl { top:10px; left:10px;   border-width:2px 0 0 2px; }
+    .corners .tr { top:10px; right:10px;  border-width:2px 2px 0 0; }
+    .corners .bl { bottom:10px; left:10px;  border-width:0 0 2px 2px; }
+    .corners .br { bottom:10px; right:10px; border-width:0 2px 2px 0; }
+    .fall-badge {
+      position: absolute; top:10px; left:50%; transform:translateX(-50%);
+      background: rgba(251,113,133,.15); border:1px solid var(--rose);
+      color: var(--rose); font-family:var(--mono); font-size:.6rem;
+      padding:3px 10px; border-radius:4px; letter-spacing:.1em; display:none;
+    }
+    .fall-badge.show { display:block; animation:blink .7s infinite; }
+    .vid-bar {
+      display:flex; align-items:center; gap:14px; padding:8px 14px;
+      background:rgba(0,0,0,.72); font-family:var(--mono); font-size:.67rem; color:var(--text3);
+    }
+    .chip { display:flex; align-items:center; gap:5px; }
+    .chip .dot { width:5px; height:5px; }
+
+    /* ===== STATS ===== */
+    .stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+    .stat {
+      background:var(--bg2); border:1px solid var(--border);
+      border-radius:var(--r); padding:12px 14px;
+    }
+    .stat-lbl { font-size:.58rem; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--text3); margin-bottom:5px; }
+    .stat-val { font-family:var(--mono); font-size:1.35rem; font-weight:500; color:var(--text); }
+    .stat-val.ok  { color:var(--emerald); }
+    .stat-val.mid { color:var(--amber); }
+    .stat-val.bad { color:var(--rose); }
+
+    /* ===== ALERT FEED ===== */
+    .alert-feed { max-height:200px; overflow-y:auto; }
+    .alert-feed::-webkit-scrollbar { width:3px; }
+    .alert-feed::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+    .a-item {
+      display:flex; gap:10px; align-items:flex-start;
+      padding:10px 18px; border-bottom:1px solid var(--border);
+      animation:sR .25s ease;
+    }
+    .a-item:last-child { border-bottom:none; }
+    @keyframes sR { from{opacity:0;transform:translateX(8px)} to{opacity:1;transform:none} }
+    .a-ico {
+      width:26px; height:26px; border-radius:8px; flex-shrink:0;
+      display:grid; place-items:center; font-size:11px;
+    }
+    .a-ico.inactivity { background:var(--amber-dim);   color:var(--amber); }
+    .a-ico.fall       { background:var(--rose-dim);    color:var(--rose); }
+    .a-ico.voice      { background:var(--violet-dim);  color:var(--violet); }
+    .a-ico.reminder   { background:var(--emerald-dim); color:var(--emerald); }
+    .a-ico.test       { background:var(--accent-dim);  color:var(--accent); }
+    .a-ico.general    { background:rgba(255,255,255,.04); color:var(--text3); }
+    .a-msg { font-size:.75rem; line-height:1.4; }
+    .a-ts  { font-family:var(--mono); font-size:.6rem; color:var(--text3); margin-top:2px; }
+    .empty { display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px;color:var(--text3);font-size:.8rem;gap:5px; }
+    .empty-ico { font-size:1.7rem; opacity:.2; }
+
+    /* ===== HISTORY TABLE ===== */
+    .history-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; font-size:.73rem; }
+    thead th {
+      padding:9px 14px; text-align:left; font-size:.58rem; font-weight:600;
+      letter-spacing:.12em; text-transform:uppercase; color:var(--text3);
+      border-bottom:1px solid var(--border);
+    }
+    tbody tr { border-bottom:1px solid var(--border); transition:background .12s; }
+    tbody tr:last-child { border-bottom:none; }
+    tbody tr:hover { background:rgba(255,255,255,.02); }
+    tbody td { padding:8px 14px; font-family:var(--mono); color:var(--text2); }
+    .badge {
+      display:inline-flex; align-items:center; padding:2px 7px; border-radius:4px;
+      font-size:.58rem; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
+    }
+    .badge.inactivity { background:var(--amber-dim);   color:var(--amber); }
+    .badge.fall        { background:var(--rose-dim);    color:var(--rose); }
+    .badge.voice       { background:var(--violet-dim);  color:var(--violet); }
+    .badge.reminder    { background:var(--emerald-dim); color:var(--emerald); }
+    .badge.test        { background:var(--accent-dim);  color:var(--accent); }
+    .badge.general     { background:rgba(255,255,255,.04); color:var(--text3); }
+
+    /* ===== BUTTONS ===== */
+    .btn {
+      flex:1; padding:9px 12px; border-radius:9px; border:none; cursor:pointer;
+      font-family:var(--sans); font-size:.77rem; font-weight:600;
+      transition:all .18s; letter-spacing:.02em;
+    }
+    .btn-violet {
+      background:linear-gradient(135deg,rgba(167,139,250,.2),rgba(56,189,248,.15));
+      border:1px solid rgba(167,139,250,.35); color:var(--violet);
+    }
+    .btn-violet:hover { background:linear-gradient(135deg,rgba(167,139,250,.32),rgba(56,189,248,.25)); transform:translateY(-1px); }
+    .btn-ghost  { background:transparent; border:1px solid var(--border2); color:var(--text2); }
+    .btn-ghost:hover  { border-color:var(--accent); color:var(--accent); }
+    .btn-rose   { background:var(--rose-dim);    border:1px solid rgba(251,113,133,.3);  color:var(--rose); }
+    .btn-rose:hover   { background:rgba(251,113,133,.2); }
+    .btn-emerald{ background:var(--emerald-dim); border:1px solid rgba(52,211,153,.3);   color:var(--emerald); }
+    .btn-emerald:hover{ background:rgba(52,211,153,.2); }
+    .btn:disabled { opacity:.35; cursor:not-allowed; transform:none !important; }
+
+    /* ===== VOICE PANEL ===== */
+    .voice-panel {
+      border-radius:var(--r2); overflow:hidden;
+      border:1px solid var(--border);
+      background:linear-gradient(160deg, #0f1928 0%, #111827 100%);
+    }
+    .voice-hdr {
+      display:flex; align-items:center; gap:10px;
+      padding:13px 18px; border-bottom:1px solid var(--border);
+    }
+    .voice-ico-wrap {
+      width:34px; height:34px; border-radius:10px;
+      background:linear-gradient(135deg,var(--violet),var(--accent));
+      display:grid; place-items:center; font-size:15px; flex-shrink:0;
+    }
+    .voice-title { font-size:.82rem; font-weight:600; }
+    .voice-sub   { font-size:.6rem; color:var(--text3); }
+
+    .voice-body { padding:16px 18px; }
+
+    /* Waveform */
+    .waveform {
+      display:flex; align-items:center; justify-content:center; gap:3px;
+      height:42px; margin-bottom:14px;
+    }
+    .wb {
+      width:3px; border-radius:3px; background:var(--violet); opacity:.25;
+      transition:height .15s;
+    }
+    .wb.active { opacity:.85; animation:wp .55s ease-in-out infinite; }
+    .wb:nth-child(odd)  { animation-delay:.15s; }
+    .wb:nth-child(even) { animation-delay:.05s; }
+    @keyframes wp { 0%,100%{height:5px} 50%{height:26px} }
+
+    /* Response bubble */
+    .v-bubble {
+      background:var(--surface2); border:1px solid var(--border2);
+      border-radius:12px; padding:12px 14px;
+      font-family:var(--deva); font-size:.83rem; line-height:1.75;
+      color:var(--text2); min-height:60px; margin-bottom:12px;
+    }
+    .lang-badge {
+      display:inline-block; font-family:var(--mono); font-size:.57rem;
+      background:var(--violet-dim); color:var(--violet);
+      border:1px solid rgba(167,139,250,.22);
+      padding:1px 7px; border-radius:4px; margin-bottom:6px; letter-spacing:.06em;
+    }
+
+    .voice-btns { display:flex; gap:8px; }
+
+    /* Quick commands */
+    .sec-lbl {
+      font-size:.58rem; font-weight:600; letter-spacing:.14em;
+      text-transform:uppercase; color:var(--text3); margin-bottom:8px;
+    }
+    .cmd-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+    .cmd-chip {
+      padding:5px 11px; border-radius:7px;
+      background:var(--bg2); border:1px solid var(--border);
+      font-family:var(--deva); font-size:.73rem; color:var(--text2);
+      cursor:pointer; transition:all .15s;
+    }
+    .cmd-chip:hover { border-color:var(--violet); color:var(--violet); background:var(--violet-dim); }
+
+    /* ===== REMINDER PANEL ===== */
+    .reminder-panel {
+      border-radius:var(--r2); overflow:hidden;
+      border:1px solid var(--border); background:var(--surface);
+    }
+    .reminder-form {
+      display:grid; grid-template-columns:1fr 1fr auto; gap:8px;
+      padding:14px 18px; border-bottom:1px solid var(--border); align-items:end;
+    }
+    .field { display:flex; flex-direction:column; gap:4px; }
+    .field label {
+      font-size:.58rem; font-weight:600; letter-spacing:.12em;
+      text-transform:uppercase; color:var(--text3);
+    }
+    .field input, .field select {
+      background:var(--bg2); border:1px solid var(--border2);
+      border-radius:8px; padding:7px 10px;
+      color:var(--text); font-family:var(--sans); font-size:.77rem;
+      outline:none; transition:border .15s; width:100%;
+    }
+    .field input:focus, .field select:focus { border-color:var(--accent); }
+    .field select option { background:var(--bg2); }
+
+    .reminder-list { max-height:240px; overflow-y:auto; }
+    .reminder-list::-webkit-scrollbar { width:3px; }
+    .reminder-list::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+
+    .r-item {
+      display:flex; align-items:center; gap:10px;
+      padding:10px 18px; border-bottom:1px solid var(--border);
+      animation:sR .25s ease;
+    }
+    .r-item:last-child { border-bottom:none; }
+    .r-time { font-family:var(--mono); font-size:.88rem; font-weight:500; color:var(--accent); min-width:46px; }
+    .r-info { flex:1; }
+    .r-label { font-size:.77rem; color:var(--text); line-height:1.3; }
+    .r-hindi { font-family:var(--deva); font-size:.7rem; color:var(--text3); margin-top:1px; }
+    .r-badge {
+      font-size:.57rem; font-family:var(--mono); letter-spacing:.06em;
+      padding:2px 6px; border-radius:4px; flex-shrink:0;
+    }
+    .r-badge.medicine { background:var(--rose-dim);    color:var(--rose); }
+    .r-badge.water    { background:var(--accent-dim);  color:var(--accent); }
+    .r-badge.exercise { background:var(--emerald-dim); color:var(--emerald); }
+    .r-badge.meal     { background:var(--amber-dim);   color:var(--amber); }
+    .r-badge.checkup  { background:var(--violet-dim);  color:var(--violet); }
+    .r-del {
+      width:24px; height:24px; border-radius:6px; border:none;
+      background:var(--rose-dim); color:var(--rose);
+      cursor:pointer; font-size:10px; display:grid; place-items:center; transition:background .15s;
+    }
+    .r-del:hover { background:rgba(251,113,133,.25); }
+    .r-empty {
+      display:flex;flex-direction:column;align-items:center;padding:24px;
+      color:var(--text3);font-size:.78rem;gap:5px;text-align:center;
+    }
+
+    /* ===== ACTIVE REMINDER POPUP ===== */
+    .r-popup {
+      position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(0);
+      background:var(--surface); border:1px solid var(--emerald);
+      border-radius:14px; padding:16px 20px;
+      display:flex; align-items:center; gap:14px;
+      box-shadow:0 0 40px rgba(52,211,153,.12);
+      z-index:9999; min-width:320px; max-width:480px;
+      display:none;
+    }
+    .r-popup.show { display:flex; animation:popUp .35s ease; }
+    @keyframes popUp { from{opacity:0;transform:translateX(-50%) translateY(14px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+    .rp-ico   { font-size:1.6rem; flex-shrink:0; }
+    .rp-title { font-size:.83rem; font-weight:600; color:var(--text); margin-bottom:2px; }
+    .rp-hindi { font-family:var(--deva); font-size:.78rem; color:var(--emerald); }
+
+    /* ===== ALERT TOASTS ===== */
+    #toasts {
+      position:fixed; top:70px; right:18px;
+      display:flex; flex-direction:column; gap:8px; z-index:9998;
+    }
+    .toast {
+      display:flex; align-items:center; gap:10px;
+      background:var(--surface); border:1px solid var(--border2);
+      border-radius:10px; padding:10px 14px;
+      font-size:.76rem; min-width:230px; max-width:310px;
+      animation:sR .3s ease;
+    }
+    .toast.t-danger  { border-color:rgba(251,113,133,.4); }
+    .toast.t-warning { border-color:rgba(251,191,36,.4); }
+    .toast.t-ok      { border-color:rgba(52,211,153,.4); }
+    .toast.t-violet  { border-color:rgba(167,139,250,.4); }
+    @keyframes tOut { to{opacity:0;transform:translateX(14px)} }
+
+    /* ===== BOTTOM BAR ===== */
+    .bottom-bar {
+      grid-column:1/3; display:flex; justify-content:center; gap:10px; padding-bottom:4px;
+    }
+
+    @media(max-width:900px){
+      .page { grid-template-columns:1fr; padding:12px; gap:12px; }
+      .stats-row { grid-template-columns:1fr 1fr; }
+      .bottom-bar { grid-column:1; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header>
+  <div class="logo">
+    <div class="logo-mark">🛡</div>
+    <div>
+      <div class="logo-name">Care<em>Watch</em></div>
+      <div class="logo-sub">AI Elderly Monitoring System</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="pill"><div class="dot" id="sys-dot"></div><span id="sys-lbl">Connecting…</span></div>
+    <div class="pill" id="clk-pill">--:--:--</div>
+  </div>
+</header>
+
+<!-- ===== PAGE GRID ===== -->
+<div class="page">
+
+  <!-- ======== LEFT COLUMN ======== -->
+  <div class="left-col">
+
+    <!-- Live Video -->
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-hdr-title">Live Camera Feed</span>
+        <span style="font-family:var(--mono);font-size:.62rem;color:var(--rose);">⬤ LIVE</span>
+      </div>
+      <div class="video-wrap">
+        <img id="vid" src="/video" alt="live feed" />
+        <div class="scan-line"></div>
+        <div class="corners">
+          <span class="tl"></span><span class="tr"></span>
+          <span class="bl"></span><span class="br"></span>
+        </div>
+        <div class="fall-badge" id="fall-badge">⚠ FALL DETECTED</div>
+        <div class="vid-bar">
+          <div class="chip" id="chip-m"><div class="dot"></div>&nbsp;Motion</div>
+          <div class="chip" id="chip-i"><div class="dot"></div>&nbsp;<span id="inact-txt">Active</span></div>
+          <div class="chip" id="chip-f"><div class="dot"></div>&nbsp;Fall Sensor</div>
+          <span style="margin-left:auto;font-size:.6rem" id="vid-clk"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat"><div class="stat-lbl">Monitoring</div><div class="stat-val ok" id="s-mon">ON</div></div>
+      <div class="stat"><div class="stat-lbl">Camera</div><div class="stat-val" id="s-cam">—</div></div>
+      <div class="stat"><div class="stat-lbl">Inactive</div><div class="stat-val" id="s-inact">0s</div></div>
+      <div class="stat"><div class="stat-lbl">Alerts</div><div class="stat-val" id="s-cnt">0</div></div>
+    </div>
+
+    <!-- Alert Feed -->
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-hdr-title">Live Alerts</span>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost"  style="flex:none;padding:4px 10px;font-size:.66rem;" onclick="triggerTest()">Test</button>
+          <button class="btn btn-rose"   style="flex:none;padding:4px 10px;font-size:.66rem;" onclick="clearAlerts()">Clear</button>
+        </div>
+      </div>
+      <div class="alert-feed" id="alert-list">
+        <div class="empty"><div class="empty-ico">🔔</div>No alerts yet</div>
+      </div>
+    </div>
+
+    <!-- History Table -->
+    <div class="card">
+      <div class="card-hdr"><span class="card-hdr-title">Alert History</span></div>
+      <div class="history-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Type</th><th>Message</th><th>Time</th></tr></thead>
+          <tbody id="hist-tb">
+            <tr><td colspan="4" style="text-align:center;color:var(--text3);padding:20px;">No records</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ======== RIGHT COLUMN ======== -->
+  <div class="right-col">
+
+    <!-- ===== VOICE AI CORNER ===== -->
+    <div class="voice-panel">
+      <div class="voice-hdr">
+        <div class="voice-ico-wrap">🎙</div>
+        <div>
+          <div class="voice-title">AI Voice Assistant</div>
+          <div class="voice-sub">Hindi • हिंदी भाषा सहायक</div>
+        </div>
+        <div class="pill" style="margin-left:auto;">
+          <div class="dot" id="v-dot"></div>
+          <span id="v-lbl">Ready</span>
+        </div>
+      </div>
+
+      <div class="voice-body">
+
+        <!-- Waveform visualizer -->
+        <div class="waveform" id="waveform">
+          <div class="wb" style="height:6px"></div>
+          <div class="wb" style="height:12px"></div>
+          <div class="wb" style="height:20px"></div>
+          <div class="wb" style="height:9px"></div>
+          <div class="wb" style="height:26px"></div>
+          <div class="wb" style="height:15px"></div>
+          <div class="wb" style="height:30px"></div>
+          <div class="wb" style="height:11px"></div>
+          <div class="wb" style="height:22px"></div>
+          <div class="wb" style="height:7px"></div>
+          <div class="wb" style="height:18px"></div>
+          <div class="wb" style="height:13px"></div>
+        </div>
+
+        <!-- Response bubble -->
+        <div class="v-bubble">
+          <div class="lang-badge">HI-IN • हिंदी</div>
+          <div id="v-text">नमस्ते! मैं आपकी देखभाल के लिए यहाँ हूँ। कृपया बोलें या नीचे दिए गए आदेश चुनें।</div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="voice-btns">
+          <button class="btn btn-violet" id="btn-voice" onclick="triggerVoice()">🎙 बोलें — Speak Now</button>
+          <button class="btn btn-ghost" style="flex:none;padding:9px 14px;" onclick="testVoice()" title="Demo response">Demo</button>
+        </div>
+
+        <!-- Quick commands -->
+        <div style="margin-top:14px;">
+          <div class="sec-lbl">Quick Commands • त्वरित आदेश</div>
+          <div class="cmd-chips">
+            <div class="cmd-chip" onclick="doHindiCmd('मदद चाहिए')">🆘 मदद चाहिए</div>
+            <div class="cmd-chip" onclick="doHindiCmd('पानी चाहिए')">💧 पानी चाहिए</div>
+            <div class="cmd-chip" onclick="doHindiCmd('दवाई')">💊 दवाई</div>
+            <div class="cmd-chip" onclick="doHindiCmd('दर्द हो रहा है')">🤕 दर्द हो रहा है</div>
+            <div class="cmd-chip" onclick="doHindiCmd('ठीक हूँ')">✅ ठीक हूँ</div>
+            <div class="cmd-chip" onclick="doHindiCmd('खाना')">🍱 खाना</div>
+            <div class="cmd-chip" onclick="doHindiCmd('नींद नहीं आ रही')">😴 नींद नहीं आ रही</div>
+            <div class="cmd-chip" onclick="doHindiCmd('बाथरूम')">🚿 बाथरूम</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== REMINDER SCHEDULER ===== -->
+    <div class="reminder-panel">
+      <div class="card-hdr">
+        <span class="card-hdr-title">Care Reminder Scheduler • देखभाल अनुस्मारक</span>
+        <span style="font-family:var(--mono);font-size:.62rem;color:var(--emerald);" id="next-lbl"></span>
+      </div>
+
+      <div class="reminder-form">
+        <div class="field">
+          <label>Time • समय</label>
+          <input type="time" id="r-time" />
+        </div>
+        <div class="field">
+          <label>Type • प्रकार</label>
+          <select id="r-type">
+            <option value="medicine">💊 Medicine</option>
+            <option value="water">💧 Water</option>
+            <option value="meal">🍱 Meal</option>
+            <option value="exercise">🧘 Exercise</option>
+            <option value="checkup">🩺 Checkup</option>
+          </select>
+        </div>
+        <button class="btn btn-emerald" style="flex:none;width:38px;height:38px;padding:0;font-size:1.1rem;border-radius:9px;margin-top:19px;" onclick="addReminder()">+</button>
+      </div>
+
+      <div class="reminder-list" id="reminder-list">
+        <div class="r-empty">
+          <div style="font-size:1.5rem;opacity:.2">⏰</div>
+          <div>No reminders scheduled</div>
+          <div style="font-size:.68rem;color:var(--text3);">Add a time above — voice alerts will fire automatically</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom action buttons -->
+  <div class="bottom-bar">
+    <button class="btn btn-ghost" style="flex:none;padding:8px 20px;" onclick="triggerTest()">🔧 Test Alert</button>
+    <button class="btn btn-rose"  style="flex:none;padding:8px 20px;" onclick="clearAlerts()">🗑 Clear All Alerts</button>
+  </div>
+</div>
+
+<!-- Active reminder popup (bottom center) -->
+<div class="r-popup" id="r-popup">
+  <div class="rp-ico" id="rp-ico">⏰</div>
+  <div style="flex:1">
+    <div class="rp-title" id="rp-title">Reminder</div>
+    <div class="rp-hindi" id="rp-hindi"></div>
+  </div>
+  <button class="btn btn-ghost" style="flex:none;padding:5px 12px;font-size:.7rem;" onclick="closePopup()">Dismiss</button>
+</div>
+
+<!-- Alert toasts (top right) -->
+<div id="toasts"></div>
+
+
+<!-- ===== JAVASCRIPT ===== -->
+<script>
+/* ---- Socket ---- */
+const socket = io();
+let allAlerts = [];
+let reminders = [];
+
+socket.on('connect',        () => setSys(true));
+socket.on('disconnect',     () => setSys(false));
+socket.on('alert_history',  a  => { allAlerts=[...a].reverse(); renderAlerts(); renderHistory(); });
+socket.on('new_alert',      a  => { allAlerts.unshift(a); renderAlerts(); renderHistory(); showToast(a); flashErr(); });
+socket.on('alerts_cleared', () => { allAlerts=[]; renderAlerts(); renderHistory(); });
+socket.on('status_update',  updateStatus);
+
+function setSys(on) {
+  document.getElementById('sys-dot').className = 'dot'+(on?' on':'');
+  document.getElementById('sys-lbl').textContent = on?'System Online':'Disconnected';
+}
+function flashErr() {
+  document.getElementById('sys-dot').className='dot err';
+  setTimeout(()=>document.getElementById('sys-dot').className='dot on', 3000);
+}
+
+/* ---- Clock ---- */
+setInterval(()=>{
+  const t = new Date().toLocaleTimeString();
+  document.getElementById('clk-pill').textContent = t;
+  document.getElementById('vid-clk').textContent  = t;
+  checkReminders();
+}, 1000);
+
+/* ---- Status ---- */
+function updateStatus(s) {
+  const c = document.getElementById('s-cam');
+  c.textContent = s.camera_ok?'OK':'No Cam';
+  c.className = 'stat-val '+(s.camera_ok?'ok':'mid');
+
+  const dur = Math.floor(s.inactive_duration||0);
+  const si = document.getElementById('s-inact');
+  si.textContent = dur+'s';
+  si.className   = 'stat-val '+(dur>25?'mid':'ok');
+  document.getElementById('inact-txt').textContent = dur>25?`Inactive ${dur}s`:'Active';
+
+  setChip('chip-m', s.motion);
+  setChip('chip-i', dur<=25, dur>25);
+  setChip('chip-f', !s.fall, false, s.fall);
+  document.getElementById('fall-badge').className = 'fall-badge'+(s.fall?' show':'');
+
+  const cnt = s.alert_count||allAlerts.length;
+  const sc = document.getElementById('s-cnt');
+  sc.textContent = cnt;
+  sc.className = 'stat-val'+(cnt>0?' mid':'');
+}
+function setChip(id, isOn, isWarn, isErr) {
+  const d = document.getElementById(id).querySelector('.dot');
+  d.className = 'dot'+(isErr?' err':isWarn?' warn':isOn?' on':'');
+}
+
+/* ---- Render alerts ---- */
+const ICONS = {inactivity:'⏱',fall:'⚠',voice:'🎙',reminder:'⏰',test:'🔧',general:'📋'};
+function renderAlerts() {
+  const el = document.getElementById('alert-list');
+  if (!allAlerts.length) { el.innerHTML='<div class="empty"><div class="empty-ico">🔔</div>No alerts yet</div>'; return; }
+  el.innerHTML = allAlerts.slice(0,30).map(a=>`
+    <div class="a-item">
+      <div class="a-ico ${a.type}">${ICONS[a.type]||'📋'}</div>
+      <div style="flex:1;min-width:0">
+        <div class="a-msg">${esc(a.message)}</div>
+        <div class="a-ts">${a.timestamp}</div>
+      </div>
+    </div>`).join('');
+}
+function renderHistory() {
+  const tb = document.getElementById('hist-tb');
+  if (!allAlerts.length) { tb.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:20px;">No records</td></tr>'; return; }
+  tb.innerHTML = allAlerts.map(a=>`
+    <tr>
+      <td>${a.id}</td>
+      <td><span class="badge ${a.type}">${a.type}</span></td>
+      <td style="max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.message)}</td>
+      <td style="color:var(--text3)">${a.timestamp}</td>
+    </tr>`).join('');
+}
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ---- Toast ---- */
+function showToast(a) {
+  const cls = {fall:'t-danger',inactivity:'t-warning',voice:'t-violet',reminder:'t-ok'}[a.type]||'';
+  const el = document.createElement('div');
+  el.className=`toast ${cls}`;
+  el.innerHTML=`<span style="font-size:13px">${ICONS[a.type]||'📋'}</span><span style="flex:1">${esc(a.message)}</span>`;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(()=>{ el.style.animation='tOut .3s ease forwards'; setTimeout(()=>el.remove(),300); }, 4500);
+}
+
+/* ---- Actions ---- */
+function triggerVoice() {
+  const btn=document.getElementById('btn-voice');
+  const wf=document.getElementById('waveform');
+  btn.disabled=true; btn.textContent='⏺ सुन रहे हैं…';
+  setVStatus('listening');
+  wf.querySelectorAll('.wb').forEach(b=>b.classList.add('active'));
+  fetch('/voice',{method:'POST'}).then(()=>{
+    setTimeout(()=>{
+      btn.disabled=false; btn.textContent='🎙 बोलें — Speak Now';
+      setVStatus('ready');
+      wf.querySelectorAll('.wb').forEach(b=>b.classList.remove('active'));
+    },7000);
+  });
+}
+function testVoice() {
+  const list = Object.values(HINDI_RESPONSES);
+  showResponse(list[Math.floor(Math.random()*list.length)]);
+}
+function triggerTest() { fetch('/test_alert',{method:'POST'}); }
+function clearAlerts() { if(!confirm('Clear all alert history?'))return; fetch('/clear',{method:'POST'}); }
+
+/* ---- Voice status ---- */
+function setVStatus(state) {
+  const d=document.getElementById('v-dot'), l=document.getElementById('v-lbl');
+  if(state==='listening') { d.className='dot warn'; l.textContent='Listening…'; }
+  else if(state==='speaking') { d.className='dot on'; l.textContent='Speaking…'; }
+  else { d.className='dot'; l.textContent='Ready'; }
+}
+
+/* ---- Hindi responses ---- */
+const HINDI_RESPONSES = {
+  'मदद चाहिए':      { hi:'देखभालकर्ता को तुरंत सूचित किया जा रहा है। कृपया शांत रहें।',           alert:true  },
+  'पानी चाहिए':     { hi:'ठीक है, पानी लाया जाएगा। थोड़ी देर प्रतीक्षा करें।',                    alert:false },
+  'दवाई':           { hi:'दवाई की याद दिलाई गई है। देखभालकर्ता को सूचित किया गया है।',             alert:true  },
+  'दर्द हो रहा है': { hi:'दर्द की सूचना मिली — देखभालकर्ता को तुरंत बुलाया जा रहा है।',            alert:true  },
+  'ठीक हूँ':         { hi:'बहुत अच्छा! आप ठीक हैं यह जानकर बहुत अच्छा लगा। हम नज़र रख रहे हैं।', alert:false },
+  'खाना':           { hi:'खाने का समय हो गया है। देखभालकर्ता को सूचित किया गया है।',               alert:false },
+  'नींद नहीं आ रही': { hi:'समझ गया। देखभालकर्ता को बता दिया गया है कि आपको नींद नहीं आ रही।',     alert:false },
+  'बाथरूम':         { hi:'ठीक है। बाथरूम जाते समय सावधान रहें। ज़रूरत हो तो मदद लें।',            alert:false },
+  'default':        { hi:'आपकी बात सुनी गई। मैं आपकी देखभाल के लिए हमेशा यहाँ हूँ।',              alert:false }
+};
+
+function doHindiCmd(cmd) {
+  const r = HINDI_RESPONSES[cmd]||HINDI_RESPONSES['default'];
+  showResponse(r);
+  if(r.alert) fetch('/test_alert',{method:'POST'});
+}
+
+function showResponse(r) {
+  document.getElementById('v-text').textContent = r.hi;
+  setVStatus('speaking');
+  document.getElementById('waveform').querySelectorAll('.wb').forEach(b=>b.classList.add('active'));
+  if('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(r.hi);
+    u.lang='hi-IN'; u.rate=0.88; u.pitch=1.05;
+    window.speechSynthesis.speak(u);
+    u.onend = () => { setVStatus('ready'); document.getElementById('waveform').querySelectorAll('.wb').forEach(b=>b.classList.remove('active')); };
+  } else {
+    setTimeout(()=>{ setVStatus('ready'); document.getElementById('waveform').querySelectorAll('.wb').forEach(b=>b.classList.remove('active')); }, 3500);
+  }
+}
+
+/* ---- Reminders ---- */
+const R_INFO = {
+  medicine: { label:'Medicine Time',   hi:'दवाई लेने का समय हो गया है।',             ico:'💊' },
+  water:    { label:'Drink Water',     hi:'पानी पीने का समय हो गया है।',              ico:'💧' },
+  meal:     { label:'Meal Time',       hi:'खाने का समय हो गया है।',                   ico:'🍱' },
+  exercise: { label:'Exercise Time',   hi:'व्यायाम करने का समय हो गया है।',            ico:'🧘' },
+  checkup:  { label:'Health Checkup',  hi:'स्वास्थ्य जाँच का समय हो गया है।',          ico:'🩺' }
+};
+
+function addReminder() {
+  const time = document.getElementById('r-time').value;
+  const type = document.getElementById('r-type').value;
+  if (!time) { alert('Please select a time first.'); return; }
+  reminders.push({ id:Date.now(), time, type, fired:false });
+  reminders.sort((a,b)=>a.time.localeCompare(b.time));
+  renderReminders();
+  document.getElementById('r-time').value='';
+  updateNextLbl();
+}
+
+function deleteReminder(id) {
+  reminders = reminders.filter(r=>r.id!==id);
+  renderReminders(); updateNextLbl();
+}
+
+function renderReminders() {
+  const el = document.getElementById('reminder-list');
+  if (!reminders.length) {
+    el.innerHTML='<div class="r-empty"><div style="font-size:1.5rem;opacity:.2">⏰</div><div>No reminders scheduled</div><div style="font-size:.68rem;color:var(--text3);">Add a time above — voice alerts will fire automatically</div></div>';
+    return;
+  }
+  el.innerHTML = reminders.map(r=>{
+    const info=R_INFO[r.type];
+    return `<div class="r-item">
+      <div class="r-time">${r.time}</div>
+      <div class="r-info">
+        <div class="r-label">${info.ico} ${info.label}</div>
+        <div class="r-hindi">${info.hi}</div>
+      </div>
+      <span class="r-badge ${r.type}">${r.type}</span>
+      <button class="r-del" onclick="deleteReminder(${r.id})">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function updateNextLbl() {
+  const now = new Date().toTimeString().slice(0,5);
+  const up = reminders.filter(r=>r.time>=now);
+  document.getElementById('next-lbl').textContent = up.length ? 'Next: '+up[0].time : '';
+}
+
+function checkReminders() {
+  const now = new Date().toTimeString().slice(0,5);
+  reminders.forEach(r=>{
+    if(r.time===now && !r.fired) {
+      r.fired=true;
+      fireReminder(r);
+      setTimeout(()=>r.fired=false, 65000);
+    }
+  });
+  updateNextLbl();
+}
+
+function fireReminder(r) {
+  const info = R_INFO[r.type];
+  document.getElementById('rp-ico').textContent   = info.ico;
+  document.getElementById('rp-title').textContent = info.label;
+  document.getElementById('rp-hindi').textContent = info.hi;
+  document.getElementById('r-popup').classList.add('show');
+  document.getElementById('v-text').textContent   = info.hi;
+  showResponse({ hi: info.hi });
+  // Log to backend
+  fetch('/test_alert',{method:'POST'});
+  setTimeout(closePopup, 30000);
+}
+
+function closePopup() {
+  document.getElementById('r-popup').classList.remove('show');
+}
+</script>
+</body>
+</html>
