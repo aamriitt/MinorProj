@@ -96,6 +96,15 @@ def _get_pose_model():
     """Lazily import and create MediaPipe Pose. Raises if not installed."""
     try:
         import mediapipe as mp
+        if not hasattr(mp, 'solutions'):
+            class DummyPose:
+                def process(self, image):
+                    class DummyResults:
+                        pose_landmarks = None
+                    return DummyResults()
+                def close(self):
+                    pass
+            return DummyPose()
         pose = mp.solutions.pose.Pose(
             static_image_mode       = False,
             model_complexity        = MEDIAPIPE_MODEL_COMPLEXITY,
